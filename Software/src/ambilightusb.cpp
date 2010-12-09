@@ -176,14 +176,46 @@ QString AmbilightUsb::hardwareVersion()
         return QApplication::tr("read device fail");
     }    
 
-    int major = read_buffer[1];
-    int minor = read_buffer[2];
-    return QString::number(major) + "." + QString::number(minor);
+    // read_buffer[0] - report ID, skip it by +1
+    int hw_major = read_buffer[INDEX_HW_VER_MAJOR +1];
+    int hw_minor = read_buffer[INDEX_HW_VER_MINOR +1];
+    return QString::number(hw_major) + "." + QString::number(hw_minor);
+}
+
+QString AmbilightUsb::firmwareVersion()
+{
+    if(ambilightDevice == NULL){
+        if(!tryToReopenDevice()){
+            return QApplication::tr("device unavailable");
+        }
+    }
+    // TODO: write command CMD_GET_VERSION to device
+    bool result = readDataFromDeviceWithCheck();
+    if(!result){
+        return QApplication::tr("read device fail");
+    }
+
+    // read_buffer[0] - report ID, skip it by +1
+    int fw_major = read_buffer[INDEX_FW_VER_MAJOR +1];
+    int fw_minor = read_buffer[INDEX_FW_VER_MINOR +1];
+    return QString::number(fw_major) + "." + QString::number(fw_minor);
 }
 
 void AmbilightUsb::offLeds()
 {
     write_buffer[1] = CMD_OFF_ALL;
+    write_buffer[9] = CMD_NOP;
+
+    writeBufferToDeviceWithCheck();
+}
+
+void AmbilightUsb::smoothChangeColors(int smoothly_delay)
+{
+    // TODO: add to settings shoothChangeColors state, send to device and load it to form when start application
+    write_buffer[1] = CMD_SMOOTH_CHANGE_COLORS;
+    write_buffer[2] = (char)smoothly_delay;
+
+    write_buffer[9] = CMD_NOP;
 
     writeBufferToDeviceWithCheck();
 }
@@ -197,6 +229,8 @@ void AmbilightUsb::setTimerOptions(int prescallerIndex, int outputCompareRegValu
     write_buffer[1] = CMD_SET_TIMER_OPTIONS;
     write_buffer[2] = (unsigned char)prescallerIndex;
     write_buffer[3] = (unsigned char)outputCompareRegValue;
+
+    write_buffer[9] = CMD_NOP;
 
     writeBufferToDeviceWithCheck();
 }
@@ -213,6 +247,8 @@ void AmbilightUsb::setColorDepth(int colorDepth)
     // TODO: set names for each index
     write_buffer[1] = CMD_SET_PWM_LEVEL_MAX_VALUE;
     write_buffer[2] = (unsigned char)colorDepth;    
+
+    write_buffer[9] = CMD_NOP;
 
     writeBufferToDeviceWithCheck();
 }
@@ -235,18 +271,16 @@ void AmbilightUsb::updateColors(LedColors colors)
     write_buffer[5] = (unsigned char)colors.RightDown->r;
     write_buffer[6] = (unsigned char)colors.RightDown->g;
     write_buffer[7] = (unsigned char)colors.RightDown->b;
+    write_buffer[8] = 0x00;
 
-    writeBufferToDeviceWithCheck();
+    write_buffer[9] = CMD_LEFT_SIDE;
+    write_buffer[10] = (unsigned char)colors.LeftUp->r;
+    write_buffer[11] = (unsigned char)colors.LeftUp->g;
+    write_buffer[12] = (unsigned char)colors.LeftUp->b;
 
-
-    write_buffer[1] = CMD_LEFT_SIDE;
-    write_buffer[2] = (unsigned char)colors.LeftUp->r;
-    write_buffer[3] = (unsigned char)colors.LeftUp->g;
-    write_buffer[4] = (unsigned char)colors.LeftUp->b;
-
-    write_buffer[5] = (unsigned char)colors.LeftDown->r;
-    write_buffer[6] = (unsigned char)colors.LeftDown->g;
-    write_buffer[7] = (unsigned char)colors.LeftDown->b;
+    write_buffer[13] = (unsigned char)colors.LeftDown->r;
+    write_buffer[14] = (unsigned char)colors.LeftDown->g;
+    write_buffer[15] = (unsigned char)colors.LeftDown->b;
 
     writeBufferToDeviceWithCheck();
 }

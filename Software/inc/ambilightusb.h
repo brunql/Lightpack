@@ -55,6 +55,7 @@ public:
     bool openDevice();
     bool deviceOpened();
     QString hardwareVersion();
+    QString firmwareVersion();
     void offLeds();
 
 public slots:
@@ -62,6 +63,7 @@ public slots:
     void setUsbSendDataTimeoutMs(double usb_send_data_timeout_secs);
     void setTimerOptions(int prescallerIndex, int outputCompareRegValue);
     void setColorDepth(int colorDepth);
+    void smoothChangeColors(int smoothly_delay);
 
 signals:
     void openDeviceSuccess(bool isSuccess);
@@ -80,8 +82,8 @@ private:
     usbDevice_t *ambilightDevice;
 
 
-    char read_buffer[1 + 8];    /* 0-ReportID, 1..8-data */
-    char write_buffer[1 + 8];   /* 0-ReportID, 1..8-data */
+    char read_buffer[1 + 0x10];    /* 0x00-ReportID, 0x01..0x10-data */
+    char write_buffer[1 + 0x10];   /* 0x00-ReportID, 0x01..0x10-data */
 
 
     // Settings:

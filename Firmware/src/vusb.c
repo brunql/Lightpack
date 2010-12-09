@@ -35,6 +35,32 @@
 #include "74HC595.h"
 #include "commands.h"
 
+
+static inline void UpdateSmoothStep(void)
+{
+	// Check how fast is this...
+
+	// First find MAX diff between old and new colors, and save all diffs in each smooth_step
+	for(uint8_t color=0; color < 3; color++){
+		for(uint8_t led_index=0; led_index < 4; led_index++){
+			int16_t diff = colors[led_index][color] - colors_new[led_index][color];
+			if(diff < 0) diff *= -1;
+
+			if(diff > max_diff) max_diff = diff;
+
+			smooth_step[led_index][color] = (uint8_t)diff;
+		}
+	}
+
+	// To find smooth_step which will be using max_diff divide on each smooth_step
+	for(uint8_t color=0; color < 3; color++){
+		for(uint8_t led_index=0; led_index < 4; led_index++){
+			smooth_step[led_index][color] = (uint8_t) max_diff / smooth_step[led_index][color];
+		}
+	}
+}
+
+
 // USB HID Report descriptor
 PROGMEM char usbHidReportDescriptor[22] = {    /* USB report descriptor */
 		0x06, 0x00, 0xff,              // USAGE_PAGE (Generic Desktop)
@@ -42,8 +68,8 @@ PROGMEM char usbHidReportDescriptor[22] = {    /* USB report descriptor */
 		0xa1, 0x01,                    // COLLECTION (Application)
 		0x15, 0x00,                    //   LOGICAL_MINIMUM (0)
 		0x26, 0xff, 0x00,              //   LOGICAL_MAXIMUM (255)
-		0x75, 0x08,                    //   REPORT_SIZE (8)
-		0x95, 0x08,                    //   REPORT_COUNT (8 bytes)
+		0x75, 0x08,                    //   REPORT_SIZE
+		0x95, 0x10,                    //   REPORT_COUNT
 		0x09, 0x00,                    //   USAGE (Undefined)
 		0xb2, 0x02, 0x01,              //   FEATURE (Data,Var,Abs,Buf)
 		0xc0                           // END_COLLECTION
@@ -54,8 +80,13 @@ uint8_t   usbFunctionRead(uint8_t *data, uint8_t len)
 {
 	// TODO: return info from temperature sensor ATtiny44 (ADC8)
 	if(len >= 2){
-		data[0] = VERSION_OF_HARDWARE_MAJOR;
-		data[1] = VERSION_OF_HARDWARE_MINOR;
+		// Hardware version
+		data[INDEX_HW_VER_MAJOR] = VERSION_OF_HARDWARE_MAJOR;
+		data[INDEX_HW_VER_MINOR] = VERSION_OF_HARDWARE_MINOR;
+
+		// Firmware version
+		data[INDEX_FW_VER_MAJOR] = VERSION_OF_FIRMWARE_MAJOR;
+		data[INDEX_FW_VER_MINOR] = VERSION_OF_FIRMWARE_MINOR;
 	}
 	return len;
 }
@@ -73,7 +104,7 @@ uint8_t   usbFunctionWrite(uint8_t *data, uint8_t len)
 		colors_new[RIGHT_DOWN][G] = data[5];
 		colors_new[RIGHT_DOWN][B] = data[6];
 
-		update_colors = TRUE;
+		// Wait while comes all new colors (wait colors for LEFT side)
 
 	}else if(data[0] == CMD_LEFT_SIDE){
 		colors_new[LEFT_UP][R] = data[1];
@@ -85,20 +116,22 @@ uint8_t   usbFunctionWrite(uint8_t *data, uint8_t len)
 		colors_new[LEFT_DOWN][B] = data[6];
 
 		update_colors = TRUE;
+		UpdateSmoothStep();
 
 	}else if(data[0] == CMD_OFF_ALL){
-		HC595_PutUInt16(0x0000);
-		for(uint8_t i=0; i<3; i++){
-			colors_new[0][i] = 0x00;
-			colors_new[1][i] = 0x00;
-			colors_new[2][i] = 0x00;
-			colors_new[3][i] = 0x00;
+		for(uint8_t i=0; i<4; i++){
+			colors_new[i][R] = 0x00;
+			colors_new[i][G] = 0x00;
+			colors_new[i][B] = 0x00;
 		}
-		update_colors = TRUE;
-	}else if(data[0] == CMD_SET_TIMER_OPTIONS){
-		TIMSK1 &= (uint8_t)~_BV(OCIE1A);
 
-		// TODO: data[CMD_SET_PRESCALLER_INDEX]
+		update_colors = TRUE;
+		UpdateSmoothStep();
+
+	}else if(data[0] == CMD_SET_TIMER_OPTIONS){
+		TIMSK &= (uint8_t)~_BV(OCIE1A);
+
+		// TODO: data[DATA_INDEX_CMD_SET_PRESCALLER]
 		switch(data[1]){
 			case CMD_SET_PRESCALLER_1: 		TCCR1B = _BV(CS10); break;
 			case CMD_SET_PRESCALLER_8:		TCCR1B = _BV(CS11); break;
@@ -107,13 +140,15 @@ uint8_t   usbFunctionWrite(uint8_t *data, uint8_t len)
 			case CMD_SET_PRESCALLER_1024:	TCCR1B = _BV(CS12) | _BV(CS11); break;
 		}
 
-		// TODO: data[CMD_SET_OCR_INDEX]
+		// TODO: data[DATA_INDEX_CMD_SET_OCR]
 		OCR1A = data[2];
 
 		TCNT1 = 0x0000;
-		TIMSK1 = _BV(OCIE1A);
+		TIMSK = _BV(OCIE1A);
 	}else if(data[0] == CMD_SET_PWM_LEVEL_MAX_VALUE){
 		pwm_level_max = data[1];
+	}else if(data[0] == CMD_SMOOTH_CHANGE_COLORS){
+		smooth_delay = data[1];
 	}
 
 	return 1;

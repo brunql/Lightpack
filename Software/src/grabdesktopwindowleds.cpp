@@ -35,8 +35,9 @@ GrabDesktopWindowLeds::GrabDesktopWindowLeds(QWidget *parent) : QWidget(parent)
     timer = new QTimer(this);
     timeEval = new TimeEvaluations();
 
-    desktop_width = QApplication::desktop()->width();
-    desktop_height = QApplication::desktop()->height();    
+    desktop_width = QApplication::desktop()->availableGeometry(QApplication::desktop()->primaryScreen()).width();
+    desktop_height = QApplication::desktop()->availableGeometry(QApplication::desktop()->primaryScreen()).height();
+
 
     // Read settings once
     qDebug() << "GrabDesktopWindowLeds(): read settings";
@@ -51,13 +52,15 @@ GrabDesktopWindowLeds::GrabDesktopWindowLeds(QWidget *parent) : QWidget(parent)
 
     this->ambilight_color_depth = settings->value("HwColorDepth").toInt();
 
+    this->updateColorsOnlyIfChanges = true;
+
 
     qDebug() << "GrabDesktopWindowLeds(): createLabelsGrabPixelsRects()";
     createLabelsGrabPixelsRects();
 
     connect(timer, SIGNAL(timeout()), this, SLOT(updateLedsColorsIfChanged()));
 
-    clearColors();
+    clearColors();       
 
     timer->start(ambilight_refresh_delay_ms);
     qDebug() << "GrabDesktopWindowLeds(): initialized";
@@ -110,8 +113,8 @@ void GrabDesktopWindowLeds::updateSizesLabelsGrabPixelsRects()
 
     labelGrabPixelsRects[RIGHT_UP]->move(desktop_width - ambilight_width, desktop_height / 2 - ambilight_height);
     labelGrabPixelsRects[RIGHT_DOWN]->move(desktop_width - ambilight_width, desktop_height / 2);
-    labelGrabPixelsRects[LEFT_UP]->move(0, QApplication::desktop()->height() / 2 - ambilight_height);
-    labelGrabPixelsRects[LEFT_DOWN]->move(0, QApplication::desktop()->height() / 2);
+    labelGrabPixelsRects[LEFT_UP]->move(0, desktop_height / 2 - ambilight_height);
+    labelGrabPixelsRects[LEFT_DOWN]->move(0, desktop_height / 2);
 }
 
 
@@ -205,9 +208,10 @@ void GrabDesktopWindowLeds::updateLedsColorsIfChanged()
         }
     }
 
-    if(needToUpdate){        
+    if((!updateColorsOnlyIfChanges) || needToUpdate){
+        // if updateColorsOnlyIfChanges == false, then update colors (not depending on needToUpdate flag)
         emit updateLedsColors( colors );
-    }    
+    }
     emit ambilightTimeOfUpdatingColors(timeEval->howLongItEnd());
 
     if(isAmbilightOn) {
@@ -287,3 +291,8 @@ void GrabDesktopWindowLeds::setWhiteGrabPixelsRects(bool state)
     }
 }
 
+
+void GrabDesktopWindowLeds::setUpdateColorsOnlyIfChanges(bool state)
+{
+    this->updateColorsOnlyIfChanges = state;
+}

@@ -29,6 +29,8 @@
 #include "ui_mainwindow.h"
 
 
+#include <QDesktopWidget>
+
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
     ui(new Ui::MainWindow)
@@ -51,13 +53,16 @@ MainWindow::MainWindow(QWidget *parent) :
     connectSignalsSlots();
 
 
+    int desktop_width = QApplication::desktop()->availableGeometry(QApplication::desktop()->primaryScreen()).width();
+    int desktop_height = QApplication::desktop()->availableGeometry(QApplication::desktop()->primaryScreen()).height();
+
     // Initialize limits of height and width
-    ui->horizontalSliderWidth->setMaximum( QApplication::desktop()->width() / 2 );
-    ui->spinBox_WidthAmbilight->setMaximum( QApplication::desktop()->width() / 2 );
+    ui->horizontalSliderWidth->setMaximum( desktop_width / 2 );
+    ui->spinBox_WidthAmbilight->setMaximum( desktop_width / 2 );
 
     // 25px - default height of panels in Ubuntu 10.04
-    ui->horizontalSliderHeight->setMaximum( QApplication::desktop()->height() / 2  - 25);
-    ui->spinBox_HeightAmbilight->setMaximum( QApplication::desktop()->height() / 2 - 25);
+    ui->horizontalSliderHeight->setMaximum( desktop_height / 2);
+    ui->spinBox_HeightAmbilight->setMaximum( desktop_height / 2);
 
         
     isErrorState = false;
@@ -75,6 +80,15 @@ MainWindow::MainWindow(QWidget *parent) :
 
     this->setWindowFlags(Qt::WindowStaysOnTopHint | Qt::Window);    
 
+
+    qDebug() << "Check screen geometry...";
+
+    int screen = QApplication::desktop()->primaryScreen();
+    qDebug() << "  primaryScreen =" << screen;
+    qDebug() << "  isVirtualDesktop =" << QApplication::desktop()->isVirtualDesktop();
+    qDebug() << "  numScreens = " << QApplication::desktop()->numScreens();
+    qDebug() << "  primaryScreen Width x Height = " << QApplication::desktop()->availableGeometry(QApplication::desktop()->primaryScreen()).width() << "x"
+            << QApplication::desktop()->availableGeometry(QApplication::desktop()->primaryScreen()).height();
     qDebug() << "MainWindow(): initialized";
 }
 
@@ -85,7 +99,7 @@ void MainWindow::connectSignalsSlots()
 
     // TODO: ambilightUsb slot setUsbReconnectDelay
     //connect(ui->spinBox_ReconnectDelay, SIGNAL(valueChanged(int)), ambilightUsb, SLOT(setUsbReconnectDelay(int)));    
-    connect(ui->doubleSpinBoxUsbSendDataTimeout, SIGNAL(valueChanged(double)), ambilightUsb, SLOT(setUsbSendDataTimeoutMs(double)));
+    connect(ui->doubleSpinBoxUsbSendDataTimeout, SIGNAL(valueChanged(double)), ambilightUsb, SLOT(setUsbSendDataTimeoutMs(double)));    
 
     // Connect to grabDesktopWindowLeds
     connect(ui->spinBox_UpdateDelay, SIGNAL(valueChanged(int)), grabDesktopWindowLeds, SLOT(setAmbilightRefreshDelayMs(int)));
@@ -98,6 +112,7 @@ void MainWindow::connectSignalsSlots()
     connect(ui->horizontalSlider_HW_ColorDepth, SIGNAL(valueChanged(int)), grabDesktopWindowLeds, SLOT(setAmbilightColorDepth(int)));    
     connect(ui->radioButton_Colored, SIGNAL(toggled(bool)), grabDesktopWindowLeds, SLOT(setColoredGrabPixelsRects(bool)));
     connect(ui->radioButton_White, SIGNAL(toggled(bool)), grabDesktopWindowLeds, SLOT(setWhiteGrabPixelsRects(bool)));
+    connect(ui->checkBox_USB_SendDataOnlyIfColorsChanges, SIGNAL(toggled(bool)), grabDesktopWindowLeds, SLOT(setUpdateColorsOnlyIfChanges(bool)));
 
     // Connect grabDesktopWindowLeds with ambilightUsb
     connect(grabDesktopWindowLeds, SIGNAL(updateLedsColors(LedColors)), ambilightUsb, SLOT(updateColors(LedColors)));
@@ -114,6 +129,7 @@ void MainWindow::connectSignalsSlots()
     connect(ui->horizontalSlider_HW_ColorDepth, SIGNAL(valueChanged(int)), this, SLOT(settingsHardwareColorDepthOptionChange()));
     connect(ui->horizontalSlider_HW_Prescaller, SIGNAL(valueChanged(int)), this, SLOT(settingsHardwareTimerOptionsChange()));
     connect(ui->horizontalSlider_HW_OCR, SIGNAL(valueChanged(int)), this, SLOT(settingsHardwareTimerOptionsChange()));
+    connect(ui->spinBox_HW_SmoothChangeColors, SIGNAL(valueChanged(int)), this, SLOT(settingsHardwareChangeColorsSmoothDelay(int)));
     // Software/Hardware options
     connect(ui->spinBox_ReconnectDelay, SIGNAL(valueChanged(int)), this, SLOT(settingsSoftwareOptionsChange()));
     connect(ui->doubleSpinBoxUsbSendDataTimeout, SIGNAL(valueChanged(double)), this, SLOT(settingsSoftwareOptionsChange()));
@@ -235,14 +251,18 @@ void MainWindow::trayAmbilightError()
 void MainWindow::showAbout()
 {
     QString hardwareVerison = ambilightUsb->hardwareVersion();
-    aboutDialog *about = new aboutDialog(hardwareVerison, this);
+    QString firmwareVerison = ambilightUsb->firmwareVersion();
+    aboutDialog *about = new aboutDialog(hardwareVerison, firmwareVerison, this);
     about->show();
 }
 
 void MainWindow::showSettings()
 {
-    this->move(QApplication::desktop()->width() / 2 - this->width() / 2,
-            QApplication::desktop()->height() / 2 - this->height() / 2);
+    int desktop_width = QApplication::desktop()->availableGeometry(QApplication::desktop()->primaryScreen()).width();
+    int desktop_height = QApplication::desktop()->availableGeometry(QApplication::desktop()->primaryScreen()).height();
+
+    this->move(desktop_width / 2 - this->width() / 2,
+            desktop_height / 2 - this->height() / 2);
     grabDesktopWindowLeds->setVisibleGrabPixelsRects(ui->checkBox_ShowPixelsAmbilight->isChecked());
     this->show();
 }
@@ -331,6 +351,12 @@ void MainWindow::settingsHardwareColorDepthOptionChange()
     }
 }
 
+void MainWindow::settingsHardwareChangeColorsSmoothDelay(int smoothDelay)
+{
+    settings->setValue("HwChangeColorsDelay", smoothDelay);
+    ambilightUsb->smoothChangeColors(smoothDelay);
+}
+
 void MainWindow::updatePwmFrequency()
 {
     int timerPrescallerIndex = ui->comboBox_HW_Prescaller->currentIndex();
@@ -411,7 +437,10 @@ void MainWindow::loadSettingsToMainWindow()
     ui->doubleSpinBox_WB_Green->setValue(settings->value("WhiteBalanceCoefGreen").toDouble());
     ui->doubleSpinBox_WB_Blue->setValue(settings->value("WhiteBalanceCoefBlue").toDouble());
 
+    ui->spinBox_HW_SmoothChangeColors->setValue(settings->value("HwChangeColorsDelay").toInt());
+
     updatePwmFrequency(); // eval PWM generation frequency and show it in settings
     settingsHardwareColorDepthOptionChange(); // synchonize color depth value with device
-    settingsHardwareTimerOptionsChange(); // synchonize timer options with device
+    settingsHardwareTimerOptionsChange(); // synchonize timer options with device    
+    settingsHardwareChangeColorsSmoothDelay(ui->spinBox_HW_SmoothChangeColors->value());
 }
