@@ -40,6 +40,8 @@
 #define PROFILE_DEFAULT_NAME            "Lightpack"
 #define LANGUAGE_DEFAULT_NAME           "<System>" /* system lang */
 #define DEBUG_LEVEL_DEFAULT             Debug::LowLevel
+#define ENABLE_API_DEFAULT              true
+#define API_PORT_DEFAULT                3636
 #define EXPERT_MODE_ENABLED_DEFAULT     false
 
 // ProfileName.ini

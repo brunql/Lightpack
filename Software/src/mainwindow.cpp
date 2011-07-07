@@ -32,6 +32,7 @@
 #include <QPlainTextEdit>
 
 #include "debug.h"
+#include "../src/apiserver.h"
 
 // ----------------------------------------------------------------------------
 // Lightpack settings window
@@ -46,7 +47,6 @@ MainWindow::MainWindow(QWidget *parent) :
     ui->setupUi(this);
 
     ui->tabWidget->setCurrentIndex( 0 );
-
 
     createActions();
     createTrayIcon();
@@ -77,6 +77,20 @@ MainWindow::MainWindow(QWidget *parent) :
     initLanguages();
 
     initLabelsForGrabbedColors();
+
+
+
+    if (Settings::valueMain("EnableApi").toBool())
+    {
+        DEBUG_LOW_LEVEL << Q_FUNC_INFO << "start API server";
+        server = new ApiServer(this);
+        if (!server->listen(QHostAddress::Any, Settings::valueMain("ApiPort").toInt())) {
+                     QMessageBox::critical(this, tr("API Server"),
+                                           tr("Unable to start the server: %1.").arg(server->errorString()));
+                     close();
+                     return;
+        }
+    }
 
     connectSignalsSlots();
 
@@ -130,6 +144,7 @@ void MainWindow::connectSignalsSlots()
 
     // Connect GrabManager with ledDevice
     connect(grabManager, SIGNAL(updateLedsColors(const QList<StructRGB> &)), ledDevice, SLOT(updateColors(const QList<StructRGB> &)));
+    connect(server, SIGNAL(updateLedsColors(const QList<StructRGB> &)), ledDevice, SLOT(updateColors(const QList<StructRGB> &)));
 
     // Main options
     connect(ui->cb_Modes,SIGNAL(activated(int)), this, SLOT(onCbModesChanged(int)));
@@ -580,8 +595,7 @@ void MainWindow::profileTraySwitch()
         if( action->isChecked() ){
             if( action->text() != ui->comboBox_Profiles->currentText() ){
                 DEBUG_LOW_LEVEL << Q_FUNC_INFO << "switch to" << action->text();
-                int index = ui->comboBox_Profiles->findText( action->text() );
-                ui->comboBox_Profiles->setCurrentIndex( index );
+                profileSwitchCombobox( action->text() );
                 return;
             }
         }else{
@@ -591,6 +605,12 @@ void MainWindow::profileTraySwitch()
             }
         }
     }
+}
+
+void MainWindow::profileSwitchCombobox(QString profile)
+{
+    int index = ui->comboBox_Profiles->findText( profile );
+    ui->comboBox_Profiles->setCurrentIndex( index );
 }
 
 void MainWindow::profileNew()
@@ -639,7 +659,7 @@ void MainWindow::profileDeleteCurrent()
     ui->comboBox_Profiles->removeItem( ui->comboBox_Profiles->currentIndex() );
 }
 
-void MainWindow::profilesFindAll()
+QStringList MainWindow::profilesFindAll()
 {
     DEBUG_LOW_LEVEL << Q_FUNC_INFO;
 
@@ -658,6 +678,7 @@ void MainWindow::profilesFindAll()
             ui->comboBox_Profiles->addItem(settingsFiles.at(i));
         }
     }
+    return settingsFiles;
 }
 
 void MainWindow::profileLoadLast()
